@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>لوحة التحكم</title>
+<style>
+:root{--bg:#fbf4f6;--card:#fff;--ink:#3b2233;--mute:#85707c;--acc:#b83a6b;--acc-ink:#fff;--line:#ecdce3;--chg:#fff3c9}
+@media (prefers-color-scheme:dark){:root{--bg:#1d1219;--card:#2a1b24;--ink:#f6e8ef;--mute:#b399a6;--acc:#e0709b;--acc-ink:#2a1020;--line:#432a37;--chg:#4a3d1a;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0 auto;background:var(--bg);color:var(--ink);font-family:Tahoma,Arial,sans-serif;padding:14px 14px 120px;max-width:640px}
+h1{font-size:22px;margin:10px 0 4px}h2{font-size:16px;margin:18px 0 8px;color:var(--acc)}
+p{color:var(--mute);font-size:13.5px;margin:0 0 8px}
+.r{display:flex;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px;margin-bottom:8px}
+.r.chg{background:var(--chg)}
+.t{width:64px;min-height:90px;border-radius:8px;background-size:cover;background-position:center;background-color:var(--line);flex:none}
+.i{flex:1;min-width:0}
+input,textarea,select{padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit;max-width:100%}
+.nm{width:100%;font-weight:600;margin-bottom:6px}
+.f{display:flex;gap:10px;flex-wrap:wrap}.f label{font-size:12.5px;color:var(--mute)}.f input{width:72px;text-align:center}
+.q{display:inline-flex;align-items:center;gap:4px}.q input{width:50px}
+button{font:inherit;cursor:pointer}
+.q button{width:32px;height:32px;border-radius:50%;border:1px solid var(--acc);background:none;color:var(--acc);font-size:18px}
+details{margin-top:8px}summary{font-size:13px;color:var(--acc)}
+details label{display:block;font-size:12.5px;color:var(--mute);margin:8px 0 3px}
+details textarea{width:100%}
+.act{display:flex;gap:8px;margin-top:10px}.act button{flex:1;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}.act .dng{color:#d33}
+.bar{position:fixed;inset:auto 0 0 0;background:var(--card);border-top:1px solid var(--line);padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px))}
+.bar div.w{max-width:640px;margin:auto;display:flex;gap:8px}
+.bar button{flex:1;border:0;border-radius:12px;padding:13px;background:var(--acc);color:var(--acc-ink);font-weight:600;font-size:16px}
+.bar button.s{background:var(--bg);color:var(--ink);border:1px solid var(--line);flex:.6}
+.bar button:disabled{opacity:.5}
+#msg{font-size:13px;color:var(--acc);text-align:center;margin-top:6px;min-height:18px}
+#setup{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+#setup input{width:100%;margin:8px 0}
+#setup button{width:100%;border:0;border-radius:10px;padding:12px;background:var(--acc);color:var(--acc-ink);font-weight:600}
+</style>
+</head>
+<body>
+<h1>لوحة تحكم Jamila store</h1>
+<div id="setup" hidden>
+<p>الصقي هنا رمز GitHub (Token) مرة واحدة. بيتحفظ على موبايلك بس.</p>
+<input id="tok" type="password" placeholder="github_pat_..." autocomplete="off">
+<button id="save">حفظ والدخول</button>
+</div>
+<div id="app" hidden>
+<p>عدلي أي موديل أو ضيفي جديد، وبعدين دوسي "نشر". الصفوف المتغيرة بتتلون.</p>
+<div id="list"></div>
+</div>
+<div class="bar"><div class="w"><button class="s" id="add" hidden>+ موديل جديد</button><button id="pub" hidden>نشر التعديلات</button></div><div id="msg"></div></div>
+<script src="images.js"></script>
+<script>
+var OWNER="tuttafatoma-rgb",REPO="Jamila-store-",BRANCH="main";
+var API="https://api.github.com/repos/"+OWNER+"/"+REPO;
+var $=function(i){return document.getElementById(i)};
+var token="",sha="",P=[],ORIG={},IM=typeof IMGMAP!=="undefined"?IMGMAP:{};
+function getTok(){try{return localStorage.getItem("jt")||""}catch(e){return ""}}
+function setTok(v){try{localStorage.setItem("jt",v)}catch(e){}}
+function hdr(){return {"Authorization":"Bearer "+token,"Accept":"application/vnd.github+json"}}
+function b64utf8(s){var b=new TextEncoder().encode(s),r="";for(var i=0;i<b.length;i+=8192)r+=String.fromCharCode.apply(null,b.subarray(i,i+8192));return btoa(r)}
+function fromb64(c){var r=atob(c.replace(/\s/g,"")),u=new Uint8Array(r.length);for(var i=0;i<r.length;i++)u[i]=r.charCodeAt(i);return new TextDecoder().decode(u)}
+function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+function say(t){$("msg").textContent=t}
+function clean(p){var o={};Object.keys(p).forEach(function(k){if(k[0]!=="_")o[k]=p[k]});o.name=String(o.name||"").trim();return o}
+function changed(p){return !!p._new||ORIG[p.id]!==JSON.stringify(clean(p))}
+function thumb(p){if(p._prev)return p._prev;var i=p.imgs?p.imgs[0]:p.img;if(i)return i;var m=IM[p.id];return m?m[0]:""}
+function showSetup(){$("setup").hidden=false;$("app").hidden=true;$("pub").hidden=true;$("add").hidden=true}
+async function load(){
+  say("جاري التحميل...");
+  try{
+    var r=await fetch(API+"/contents/catalog.js?ref="+BRANCH,{headers:hdr(),cache:"no-store"});
+    if(!r.ok){say(r.status===401||r.status===403?"الرمز غلط أو ملوش صلاحية. غيريه.":"مش قادرة أحمل الملف ("+r.status+")");showSetup();return}
+    var j=await r.json();sha=j.sha;
+    P=JSON.parse(fromb64(j.content).replace(/^var PRODUCTS\s*=\s*/,"").replace(/;\s*$/,""));
+    ORIG={};P.forEach(function(p){ORIG[p.id]=JSON.stringify(clean(p))});
+    $("setup").hidden=true;$("app").hidden=false;$("pub").hidden=false;$("add").hidden=false;
+    render();say("");
+  }catch(e){say("مشكلة في الاتصال: "+e.message)}
+}
+function row(p,ix){
+  var c=p.cat||"pj";
+  return '<div class="r'+(changed(p)?' chg':'')+'" data-i="'+ix+'"><div class="t" style="background-image:url(\''+thumb(p)+'\')"></div><div class="i"><input class="nm" data-k="name" placeholder="اسم الموديل" value="'+esc(p.name)+'"><div class="f"><label>السعر <input type="number" inputmode="numeric" data-k="price" value="'+p.price+'"></label><label>الكمية <span class="q"><button data-a="m">−</button><input type="number" inputmode="numeric" data-k="stock" value="'+p.stock+'"><button data-a="p">+</button></span></label></div><details'+(p._open?' open':'')+'><summary>تفاصيل</summary><label>الوصف</label><textarea data-k="desc" rows="3">'+esc(p.desc||"")+'</textarea><label>القسم</label><select data-k="cat"><option value="pj"'+(c==="pj"?" selected":"")+'>بيجامات</option><option value="as"'+(c==="as"?" selected":"")+'>أسدالات</option></select><label>صور الموديل (بتستبدل الصور الحالية)</label><input type="file" accept="image/*" multiple data-a="img"><div class="act"><button data-a="top">للأول</button><button data-a="del" class="dng">حذف</button></div></details></div></div>';
+}
+function render(){
+  var h="";
+  [["pj","بيجامات"],["as","أسدالات"]].forEach(function(c){
+    h+="<h2>"+c[1]+"</h2>";
+    P.forEach(function(p,ix){if((p.cat||"pj")===c[0])h+=row(p,ix)});
+  });
+  $("list").innerHTML=h;
+}
+function mark(r){r.classList.toggle("chg",changed(P[r.dataset.i]))}
+$("list").oninput=function(e){
+  var t=e.target,k=t.dataset.k;if(!k||k==="cat")return;
+  var r=t.closest(".r"),p=P[r.dataset.i];
+  p[k]=(k==="price"||k==="stock")?Math.max(0,Number(t.value)||0):t.value;mark(r);
+};
+function shrink(f){return new Promise(function(res,rej){var u=URL.createObjectURL(f),im=new Image();im.onload=function(){var s=Math.min(1,520/im.width,780/im.height),c=document.createElement("canvas");c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);c.getContext("2d").drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);res(c.toDataURL("image/jpeg",0.72))};im.onerror=rej;im.src=u})}
+$("list").onchange=async function(e){
+  var t=e.target,r=t.closest(".r");if(!r)return;var p=P[r.dataset.i];
+  if(t.dataset.k==="cat"){p.cat=t.value;p._open=true;render();return}
+  if(t.dataset.a==="img"&&t.files.length){
+    say("جاري تجهيز الصور...");
+    try{
+      var arr=[];for(var i=0;i<t.files.length;i++)arr.push(await shrink(t.files[i]));
+      var ts=Date.now();
+      p._new=arr.map(function(d,i){return {path:"images/p"+p.id+"-"+ts+"-"+i+".jpg",b64:d.split(",")[1]}});
+      var paths=p._new.map(function(x){return x.path});
+      if(paths.length===1){p.img=paths[0];delete p.imgs}else{p.imgs=paths;delete p.img}
+      p._prev=arr[0];p._open=true;render();say("");
+    }catch(err){say("مقدرتش أقرا الصورة.")}
+  }
+};
+$("list").onclick=function(e){
+  var b=e.target.closest("button");if(!b||!b.dataset.a)return;
+  var r=b.closest(".r"),ix=+r.dataset.i,p=P[ix],a=b.dataset.a;
+  if(a==="m"||a==="p"){var inp=r.querySelector('input[data-k="stock"]');p.stock=Math.max(0,(Number(inp.value)||0)+(a==="p"?1:-1));inp.value=p.stock;mark(r)}
+  else if(a==="top"){P.splice(ix,1);P.unshift(p);render();window.scrollTo(0,0)}
+  else if(a==="del"){if(confirm("تحذفي \""+(p.name||"الموديل")+"\"؟")){P.splice(ix,1);render()}}
+};
+$("add").onclick=function(){
+  var id=P.reduce(function(m,p){return Math.max(m,p.id)},0)+1;
+  P.unshift({id:id,cat:"pj",name:"",price:560,stock:1,desc:"",_open:true,_add:true});render();window.scrollTo(0,0);
+};
+async function put(path,content,s,msg){
+  var b={message:msg,content:content,branch:BRANCH};if(s)b.sha=s;
+  var r=await fetch(API+"/contents/"+path,{method:"PUT",headers:hdr(),body:JSON.stringify(b)});
+  if(!r.ok){var t=await r.text();throw new Error(r.status+" "+t.slice(0,100))}
+  return r.json();
+}
+$("pub").onclick=async function(){
+  for(var i=0;i<P.length;i++){
+    if(!String(P[i].name).trim()){say("في موديل من غير اسم.");return}
+    if(P[i]._add&&!P[i]._new){say("ضيفي صورة للموديل الجديد: "+P[i].name);return}
+  }
+  $("pub").disabled=true;say("جاري النشر...");
+  try{
+    for(var i=0;i<P.length;i++)if(P[i]._new)for(var k=0;k<P[i]._new.length;k++)await put(P[i]._new[k].path,P[i]._new[k].b64,null,"إضافة صورة");
+    var out="var PRODUCTS = [\n"+P.map(function(p){return JSON.stringify(clean(p))}).join(",\n")+"\n];\n";
+    var j=await put("catalog.js",b64utf8(out),sha,"تحديث المنتجات");
+    sha=j.content.sha;
+    P.forEach(function(p){delete p._new;delete p._add;delete p._open;ORIG[p.id]=JSON.stringify(clean(p))});
+    render();say("اتنشر ✅ الموقع هيتحدث خلال دقيقة تقريبًا.");
+  }catch(err){say("حصل خطأ: "+err.message+" (لو 409 اعملي Refresh وجربي تاني)")}
+  $("pub").disabled=false;
+};
+$("save").onclick=function(){var v=$("tok").value.trim();if(!v)return;token=v;setTok(v);load()};
+token=getTok();
+if(token)load();else showSetup();
+</script>
+</body>
+</html>
